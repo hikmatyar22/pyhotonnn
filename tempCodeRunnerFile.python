@@ -1,0 +1,206 @@
+import tkinter as tk  # Import tkinter untuk membuat GUI
+import random  # Import library random untuk menghasilkan angka acak
+
+# Kelas dasar untuk semua objek permainan
+class GameObject:
+    def __init__(self, canvas, item):  # Konstruktor yang menerima canvas dan item
+        self.canvas = canvas  # Canvas tempat objek digambar
+        self.item = item  # Objek permainan yang dibuat di canvas
+
+    def get_position(self):  # Mengembalikan posisi objek di canvas
+        return self.canvas.coords(self.item)
+
+    def move(self, x, y):  # Memindahkan objek ke posisi baru berdasarkan offset x dan y
+        self.canvas.move(self.item, x, y)
+
+    def delete(self):  # Menghapus objek dari canvas
+        self.canvas.delete(self.item)
+
+# Kelas untuk objek bola
+class Ball(GameObject):
+    def __init__(self, canvas, x, y):  # Konstruktor yang menginisialisasi bola
+        self.radius = 10  # Radius bola
+        self.direction = [random.choice([-1, 1]), -1]  # Arah awal bola (acak untuk horizontal)
+        self.speed = random.randint(4, 6)  # Kecepatan bola (acak antara 4-6)
+        item = canvas.create_oval(x - self.radius, y - self.radius,  # Menggambar bola di canvas
+                                  x + self.radius, y + self.radius,
+                                  fill='blue', outline='white', width=2)
+        super(Ball, self).__init__(canvas, item)  # Memanggil konstruktor kelas induk
+
+    def update(self):  # Memperbarui posisi bola
+        coords = self.get_position()  # Mendapatkan posisi bola saat ini
+        width = self.canvas.winfo_width()  # Mendapatkan lebar canvas
+        if coords[0] <= 0 or coords[2] >= width:  # Jika bola menyentuh sisi kiri/kanan
+            self.direction[0] *= -1  # Membalik arah horizontal bola
+        if coords[1] <= 0:  # Jika bola menyentuh bagian atas
+            self.direction[1] *= -1  # Membalik arah vertikal bola
+        x = self.direction[0] * self.speed  # Menghitung pergeseran horizontal
+        y = self.direction[1] * self.speed  # Menghitung pergeseran vertikal
+        self.move(x, y)  # Memindahkan bola
+
+    def collide(self, game_objects):  # Menangani tabrakan bola dengan objek lain
+        coords = self.get_position()  # Mendapatkan posisi bola
+        x = (coords[0] + coords[2]) * 0.5  # Menentukan posisi tengah horizontal bola
+        if len(game_objects) > 1:  # Jika bola bertabrakan dengan lebih dari satu objek
+            self.direction[1] *= -1  # Membalik arah vertikal bola
+        elif len(game_objects) == 1:  # Jika bola bertabrakan dengan satu objek
+            game_object = game_objects[0]  # Objek yang bertabrakan dengan bola
+            coords = game_object.get_position()  # Mendapatkan posisi objek
+            if x > coords[2]:  # Jika bola mengenai sisi kanan objek
+                self.direction[0] = 1  # Arah horizontal berubah ke kanan
+            elif x < coords[0]:  # Jika bola mengenai sisi kiri objek
+                self.direction[0] = -1  # Arah horizontal berubah ke kiri
+            else:
+                self.direction[1] *= -1  # Membalik arah vertikal bola
+
+        for game_object in game_objects:  # Iterasi untuk setiap objek yang bertabrakan
+            if isinstance(game_object, Brick):  # Jika objek adalah brick
+                game_object.hit()  # Kurangi jumlah nyawa brick
+
+# Kelas untuk objek pemantul (paddle)
+class Paddle(GameObject):
+    def __init__(self, canvas, x, y):  # Konstruktor yang menginisialisasi paddle
+        self.width = 100  # Lebar paddle
+        self.height = 20  # Tinggi paddle
+        self.ball = None  # Referensi ke bola yang menempel pada paddle
+        item = canvas.create_oval(x - self.width / 2,  # Membuat paddle di canvas dengan warna merah
+                                  y - self.height / 2,
+                                  x + self.width / 2,
+                                  y + self.height / 2,
+                                  fill='#FF6F61', outline='#FF3C28')
+        super(Paddle, self).__init__(canvas, item)  # Memanggil konstruktor kelas induk
+
+    def set_ball(self, ball):  # Menempelkan bola ke paddle
+        self.ball = ball
+
+    def move(self, offset):  # Memindahkan paddle dan bola yang menempel jika ada
+        coords = self.get_position()  # Mendapatkan posisi paddle saat ini
+        width = self.canvas.winfo_width()  # Mendapatkan lebar canvas
+        if coords[0] + offset >= 0 and coords[2] + offset <= width:  # Memastikan paddle tidak keluar batas
+            super(Paddle, self).move(offset, 0)  # Memindahkan paddle
+            if self.ball is not None:  # Jika bola menempel pada paddle
+                self.ball.move(offset, 0)  # Bola ikut bergerak dengan paddle
+
+# Kelas untuk objek batu bata (brick)
+class Brick(GameObject):
+    COLORS = {1: '#FF5733', 2: '#FFBD33', 3: '#75FF33'}  # Warna brick berdasarkan jumlah nyawa
+
+    def __init__(self, canvas, x, y, hits):  # Konstruktor yang menginisialisasi brick
+        self.width = 60  # Lebar brick
+        self.height = 20  # Tinggi brick
+        self.hits = hits  # Jumlah nyawa brick
+        color = Brick.COLORS[hits]  # Warna awal brick berdasarkan nyawa
+        item = canvas.create_rectangle(x - self.width / 2,  # Membuat brick di canvas
+                                       y - self.height / 2,
+                                       x + self.width / 2,
+                                       y + self.height / 2,
+                                       fill=color, outline='black', tags='brick')
+        super(Brick, self).__init__(canvas, item)  # Memanggil konstruktor kelas induk
+
+    def hit(self):  # Mengurangi jumlah nyawa brick
+        self.hits -= 1
+        if self.hits == 0:  # Jika nyawa habis
+            self.delete()  # Hapus brick dari canvas
+        else:
+            self.canvas.itemconfig(self.item, fill=Brick.COLORS[self.hits])  # Ubah warna brick
+
+# Kelas utama untuk permainan
+class Game(tk.Frame):
+    def __init__(self, master):  # Konstruktor yang menginisialisasi permainan
+        super(Game, self).__init__(master)  # Memanggil konstruktor kelas induk
+        self.lives = 3  # Jumlah nyawa pemain
+        self.width = 640  # Lebar canvas
+        self.height = 480  # Tinggi canvas
+        self.canvas = tk.Canvas(self, width=self.width, height=self.height)  # Membuat canvas
+        self.canvas.pack()  # Menambahkan canvas ke frame
+        self.pack()  # Menambahkan frame ke root Tkinter
+
+        # Draw gradient background
+        self.create_gradient_background()  # Membuat latar belakang gradien
+
+        self.items = {}  # Menyimpan semua objek permainan
+        self.ball = None  # Referensi ke bola
+        self.paddle = Paddle(self.canvas, self.width / 2, 400)  # Membuat paddle
+        self.items[self.paddle.item] = self.paddle  # Menambahkan paddle ke daftar objek
+
+        for x in range(5, self.width - 5, 65):  # Menambahkan brick secara horizontal
+            self.add_brick(x + 32.5, 50, 3)  # Baris pertama dengan nyawa 3
+            self.add_brick(x + 32.5, 80, 2)  # Baris kedua dengan nyawa 2
+            self.add_brick(x + 32.5, 110, 1)  # Baris ketiga dengan nyawa 1
+
+        self.hud = None  # Referensi untuk tampilan nyawa
+        self.setup_game()  # Mengatur permainan awal
+        self.canvas.focus_set()  # Mengatur fokus ke canvas untuk menangkap input
+        self.canvas.bind('<Left>', lambda _: self.paddle.move(-15))  # Gerakkan paddle ke kiri
+        self.canvas.bind('<Right>', lambda _: self.paddle.move(15))  # Gerakkan paddle ke kanan
+
+    def create_gradient_background(self):  # Membuat latar belakang gradien
+        colors = ['#1e3c72', '#2a5298', '#3a7ca5', '#5199c9']  # Warna gradien
+        step = self.height // len(colors)  # Tinggi setiap warna gradien
+        for i, color in enumerate(colors):
+            self.canvas.create_rectangle(0, i * step, self.width, (i + 1) * step, fill=color, outline='')
+
+    def setup_game(self):  # Mengatur permainan awal
+        self.add_ball()  # Menambahkan bola ke permainan
+        self.update_lives_text()  # Menampilkan jumlah nyawa di HUD
+        self.text = self.draw_text(320, 240, 'Press Space to Start!', size='30')  # Teks awal permainan
+        self.canvas.bind('<space>', lambda _: self.start_game())  # Tombol spasi untuk memulai permainan
+
+    def add_ball(self):  # Menambahkan bola ke permainan
+        if self.ball is not None:  # Jika bola sudah ada
+            self.ball.delete()  # Hapus bola sebelumnya
+        paddle_coords = self.paddle.get_position()  # Mendapatkan posisi paddle
+        x = (paddle_coords[0] + paddle_coords[2]) * 0.5  # Menempatkan bola di tengah paddle
+        self.ball = Ball(self.canvas, x, 380)  # Membuat objek bola
+        self.paddle.set_ball(self.ball)  # Menempelkan bola ke paddle
+
+    def add_brick(self, x, y, hits):  # Menambahkan brick ke permainan
+        brick = Brick(self.canvas, x, y, hits)  # Membuat objek brick
+        self.items[brick.item] = brick  # Menambahkan brick ke daftar objek
+
+    def draw_text(self, x, y, text, size='20'):  # Menambahkan teks ke canvas
+        font = ('Arial', size)  # Gaya font untuk teks
+        return self.canvas.create_text(x, y, text=text, font=font, fill='white')
+
+    def update_lives_text(self):  # Menampilkan jumlah nyawa di HUD
+        text = f'Lives: {self.lives}'  # Format teks untuk nyawa
+        if self.hud is None:  # Jika HUD belum dibuat
+            self.hud = self.draw_text(70, 20, text, 15)  # Menambahkan teks nyawa ke canvas
+        else:
+            self.canvas.itemconfig(self.hud, text=text)  # Memperbarui teks nyawa di HUD
+
+    def start_game(self):  # Memulai permainan
+        self.canvas.unbind('<space>')  # Melepas binding tombol spasi
+        self.canvas.delete(self.text)  # Menghapus teks awal permainan
+        self.paddle.ball = None  # Melepaskan bola dari paddle
+        self.game_loop()  # Memulai loop permainan
+
+    def game_loop(self):  # Loop utama permainan
+        self.check_collisions()  # Mengecek tabrakan bola dengan objek lain
+        num_bricks = len(self.canvas.find_withtag('brick'))  # Menghitung jumlah brick yang tersisa
+        if num_bricks == 0:  # Jika semua brick telah dihancurkan
+            self.ball.speed = 0  # Menghentikan bola
+            self.draw_text(320, 240, 'You Win!')  # Tampilkan pesan kemenangan
+        elif self.ball.get_position()[3] >= self.height:  # Jika bola jatuh ke bawah
+            self.ball.speed = 0  # Menghentikan bola
+            self.lives -= 1  # Kurangi nyawa pemain
+            if self.lives < 0:  # Jika nyawa habis
+                self.draw_text(320, 240, 'Game Over!')  # Tampilkan pesan game over
+            else:
+                self.after(1000, self.setup_game)  # Reset permainan setelah 1 detik
+        else:
+            self.ball.update()  # Memperbarui posisi bola
+            self.after(50, self.game_loop)  # Memanggil kembali loop permainan
+
+    def check_collisions(self):  # Mengecek tabrakan bola dengan objek lain
+        ball_coords = self.ball.get_position()  # Mendapatkan posisi bola
+        items = self.canvas.find_overlapping(*ball_coords)  # Mendapatkan semua objek yang bertabrakan
+        objects = [self.items[x] for x in items if x in self.items]  # Filter hanya objek permainan
+        self.ball.collide(objects)  # Menangani tabrakan bola
+
+# Program utama untuk menjalankan permainan
+if __name__ == '__main__':  # Program utama untuk menjalankan permainan
+    root = tk.Tk()  # Membuat jendela utama
+    root.title('Brick Breaker: Gradient Style')  # Menentukan judul jendela
+    game = Game(root)  # Membuat instance kelas Game
+    game.mainloop()  # Memulai loop Tkinter untuk menjalankan permainan
